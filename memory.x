@@ -1,4 +1,4 @@
-/* CH95X */
+/* CH59x */
 MEMORY
 {
     /* Code Flash, 448KB max */

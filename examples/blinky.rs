@@ -1,37 +1,35 @@
 #![no_std]
 #![no_main]
 
-use ch59x_hal as hal;
-use hal::pac;
-use panic_halt as _;
+use ch59x_hal::uart::UartTx;
+use embedded_hal_1::delay::DelayNs;
+use hal::delay::CycleDelay;
+use hal::gpio::{Level, Output, OutputDrive};
+use qingke::riscv;
+use {ch59x_hal as hal, panic_halt as _};
 
-#[riscv_rt::entry]
+use core::arch::{asm, global_asm};
+use core::fmt::Write;
+use core::writeln;
+
+#[qingke_rt::entry]
 fn main() -> ! {
-    // LED PA4, PB23
+    let mut config = hal::Config::default();
+    config.clock.use_pll_60mhz().enable_lse();
+    let p = hal::init(config);
 
-    let p = unsafe { pac::Peripherals::steal() };
+    let mut delay = CycleDelay;
 
-    unsafe {
-        p.GPIO.pa_pd_drv.modify(|_, w| w.pa_pd_drv().bits(1 << 4));
-        p.GPIO.pa_dir.modify(|_, w| w.pa_dir().bits(1 << 4));
-
-        p.GPIO.pb_pd_drv.modify(|_, w| w.pb_pd_drv().bits(1 << 23));
-        p.GPIO.pb_dir.modify(|_, w| w.pb_dir().bits(1 << 23));
-
-        p.GPIO
-            .pb_out
-            .modify(|r, w| w.pb_out().bits(r.pb_out().bits() ^ (1 << 23)));
-    }
+    // LED PA8
+    let mut led = Output::new(p.PA8, Level::High, OutputDrive::_5mA);
+    // let mut led = Output::new(p.PB18, Level::Low, OutputDrive::_5mA);
+    let mut serial = UartTx::new(p.UART1, p.PA9, Default::default()).unwrap();
+    // serial.blocking_flush().unwrap();
 
     loop {
-        unsafe {
-            p.GPIO
-                .pa_out
-                .modify(|r, w| w.pa_out().bits(r.pa_out().bits() ^ (1 << 4)));
-            p.GPIO
-                .pb_out
-                .modify(|r, w| w.pb_out().bits(r.pb_out().bits() ^ (1 << 23)));
-            riscv::asm::delay(100000);
-        }
+        led.toggle();
+        writeln!(serial, "Hello").unwrap();
+
+        hal::delay_ms(1000);
     }
 }

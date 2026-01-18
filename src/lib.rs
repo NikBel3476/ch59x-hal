@@ -3,17 +3,39 @@
 use core::ptr;
 
 pub use ch59x::ch59x as pac;
+use qingke::riscv;
 
-pub mod lcd;
-pub mod prelude;
+pub use self::peripheral::{Peripheral, PeripheralRef};
+pub use self::peripherals::Peripherals;
+
+pub mod adc;
+pub mod dma;
+pub mod gpio;
+pub mod i2c;
+// pub mod lcd;
+#[cfg(feature = "ble")]
+pub mod ble;
+pub mod delay;
 pub mod rtc;
-pub mod serial;
 pub mod signature;
+pub mod spi;
 pub mod sysctl;
+#[cfg(not(feature = "embassy"))]
+pub mod systick;
 pub mod timer;
+pub mod uart;
 
+pub mod interrupt;
 pub mod isp;
-pub mod rt;
+// pub mod rt;
+
+pub mod peripherals;
+
+mod peripheral;
+pub mod prelude;
+
+#[cfg(feature = "embassy")]
+pub mod embassy;
 
 /// Bits per second
 pub type BitsPerSecond = fugit::HertzU32;
@@ -65,4 +87,131 @@ where
         riscv::asm::nop();
     }
     ret
+}
+
+pub fn delay_us(t: u16) {
+    let t = t as u32;
+    let mut i = match sysctl::clocks().hclk.to_Hz() {
+        60000000 => t * 15,
+        80000000 => t * 20,
+        48000000 => t * 12,
+        32000000 => t * 8,
+        24000000 => t * 6,
+        16000000 => t * 4,
+        8000000 => t * 2,
+        4000000 => t,
+        2000000 => t / 2,
+        1000000 => t / 4,
+        _ => t << 1, // default 2us
+    };
+    i = i / 8;
+    unsafe {
+        core::arch::asm!(
+        "1:",
+        "nop",
+        "addi {0}, {0}, -1",
+        "bne {0}, zero, 1b",
+        inout(reg) i => _,
+        options(nomem, nostack),
+        );
+    }
+}
+
+pub fn delay_ms(t: u16) {
+    for _ in 0..t {
+        delay_us(1000);
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct Config {
+    pub clock: sysctl::Config,
+    /// All GPIO Input Pull Up, aka. HAL_SLEEP
+    pub low_power: bool,
+    /// Enable DCDC, aka. DCDC_ENABLE
+    pub enable_dcdc: bool,
+}
+
+pub fn init(config: Config) -> Peripherals {
+    let sys = unsafe { &*pac::SYS::PTR };
+    if config.enable_dcdc {
+        with_safe_access(|| {
+            sys.aux_power_adj.modify(|_, w| w.dcdc_charge().set_bit());
+            sys.power_plan.modify(|_, w| w.pwr_dcdc_pre().set_bit());
+        });
+        delay_us(10);
+        with_safe_access(|| {
+            sys.power_plan.modify(|_, w| w.pwr_dcdc_en().set_bit());
+        });
+    } else {
+        with_safe_access(|| {
+            sys.aux_power_adj.modify(|_, w| w.dcdc_charge().clear_bit());
+            sys.power_plan
+                .modify(|_, w| w.pwr_dcdc_pre().clear_bit().pwr_dcdc_pre().clear_bit());
+        });
+    }
+
+    config.clock.freeze();
+
+    if config.low_power {
+        unsafe {
+            let rb = &*pac::GPIO::PTR;
+            // in pu
+            rb.pa_pd_drv.write(|w| w.bits(0));
+            rb.pb_pd_drv.write(|w| w.bits(0));
+            rb.pa_pu.write(|w| w.bits(0xffff));
+            rb.pb_pu.write(|w| w.bits(0xffff));
+            rb.pa_dir.write(|w| w.bits(0));
+            rb.pb_dir.write(|w| w.bits(0));
+        }
+    }
+
+    Peripherals::take()
+}
+
+/// System reset
+pub unsafe fn reset() -> ! {
+    const KEY3: u16 = 0xBEEF;
+    let pfic = unsafe { &*pac::PFIC::PTR };
+    pfic.cfgr.write(|w| w.keycode().variant(KEY3).resetsys().set_bit());
+    loop {}
+}
+
+/// Software reset
+pub unsafe fn soft_reset() -> ! {
+    isp::flash_rom_reset();
+
+    let rb = &*pac::SYSCTL::PTR;
+    with_safe_access(|| {
+        rb.rst_wdog_ctrl.modify(|_, w| w.software_reset().set_bit());
+    });
+    loop {}
+}
+
+pub static mut SERIAL: Option<uart::UartTx<peripherals::UART1>> = None;
+
+#[macro_export]
+macro_rules! println {
+    ($($arg:tt)*) => {
+        unsafe {
+            use core::fmt::Write;
+            use core::writeln;
+
+            if let Some(uart) = $crate::SERIAL.as_mut() {
+                writeln!(uart, $($arg)*).unwrap();
+            }
+        }
+    }
+}
+
+pub unsafe fn set_default_serial(serial: uart::UartTx<'static, peripherals::UART1>) {
+    SERIAL.replace(serial);
+}
+
+pub fn stack_free() -> usize {
+    extern "C" {
+        static mut _ebss: u32;
+        static mut _stack_top: u32;
+    }
+    unsafe { &mut _stack_top as *mut u32 as usize - &mut _ebss as *mut u32 as usize }
 }
