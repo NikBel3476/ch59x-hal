@@ -172,41 +172,47 @@ impl<'d, T: Instance> Spi<'d, T> {
         let fdiv = fdiv.min(0xff).max(2) as u8;
         if fdiv == 2 {
             // master input delay enable, for high clock speed
-            T::regs().ctrl_cfg().modify(|_, w| w.mst_dly_en().set_bit());
+            T::regs().spi0_ctrl_cfg().modify(|_, w| w.spi_mst_dly_en().set_bit());
         }
-        T::regs().clock_div().write(|w| w.clock_div().variant(fdiv));
+        T::regs()
+            .spi0_clock_div_r8_spi0_slave_pre()
+            .write(|w| w.spi0_clock_div_r8_spi0_slave_pre().variant(fdiv));
 
         // FIFO/Counter/IF clear
-        T::regs().ctrl_mod().write(|w| w.all_clear().set_bit());
+        T::regs().spi0_ctrl_mod().write(|w| w.spi_all_clear().set_bit());
 
         // enable output
-        T::regs().ctrl_mod().write(|w| {
+        T::regs().spi0_ctrl_mod().write(|w| {
             // UNDOCUMENTED: ALL_CLEAR must be cleared when setting OE
-            w.all_clear()
+            w.spi_all_clear()
                 .clear_bit()
-                .mosi_oe()
+                .spi_mosi_oe()
                 .bit(mosi.is_some())
-                .miso_oe()
+                .spi_miso_oe()
                 .bit(miso.is_some())
-                .sck_oe()
+                .spi_sck_oe()
                 .bit(sck.is_some())
         });
 
         T::regs()
-            .ctrl_cfg()
-            .modify(|_, w| w.auto_if().set_bit().dma_enable().clear_bit());
+            .spi0_ctrl_cfg()
+            .modify(|_, w| w.spi_auto_if().set_bit().spi_dma_enable().clear_bit());
 
         // mode 0 or mode 3
         match config.clock_polarity {
             // MODE_0
-            Polarity::IdleLow => T::regs().ctrl_mod().modify(|_, w| w.mst_sck_mod().clear_bit()), // default
+            Polarity::IdleLow => T::regs()
+                .spi0_ctrl_mod()
+                .modify(|_, w| w.spi_mst_sck_mod_rb_spi_slv_cmd_mod().clear_bit()), // default
             // MODE_3
-            Polarity::IdleHigh => T::regs().ctrl_mod().modify(|_, w| w.mst_sck_mod().set_bit()),
-        }
+            Polarity::IdleHigh => T::regs()
+                .spi0_ctrl_mod()
+                .modify(|_, w| w.spi_mst_sck_mod_rb_spi_slv_cmd_mod().set_bit()),
+        };
         match config.bit_order {
-            BitOrder::MsbFirst => T::regs().ctrl_cfg().modify(|_, w| w.bit_order().clear_bit()), // default
-            BitOrder::LsbFirst => T::regs().ctrl_cfg().modify(|_, w| w.bit_order().set_bit()),
-        }
+            BitOrder::MsbFirst => T::regs().spi0_ctrl_cfg().modify(|_, w| w.spi_bit_order().clear_bit()), // default
+            BitOrder::LsbFirst => T::regs().spi0_ctrl_cfg().modify(|_, w| w.spi_bit_order().set_bit()),
+        };
 
         Self {
             _peri: peri,
@@ -220,18 +226,18 @@ impl<'d, T: Instance> Spi<'d, T> {
 
     pub fn blocking_write_byte(&mut self, byte: u8) -> Result<(), Error> {
         let rb = T::regs();
-        rb.ctrl_mod().modify(|_, w| w.fifo_dir().clear_bit());
-        rb.buffer().write(|w| unsafe { w.bits(byte) });
-        while !rb.int_flag().read().free().bit_is_set() {}
+        rb.spi0_ctrl_mod().modify(|_, w| w.spi_fifo_dir().clear_bit());
+        rb.spi0_buffer().write(|w| unsafe { w.bits(byte) });
+        while !rb.spi0_int_flag().read().spi_free().bit_is_set() {}
         Ok(())
     }
 
     pub fn blocking_read_byte(&mut self) -> Result<u8, Error> {
         let rb = T::regs();
-        rb.ctrl_mod().modify(|_, w| w.fifo_dir().clear_bit()); // ?? in EVT
-        rb.buffer().write(|w| unsafe { w.bits(0xFF) });
-        while !rb.int_flag().read().free().bit_is_set() {}
-        Ok(rb.buffer().read().bits())
+        rb.spi0_ctrl_mod().modify(|_, w| w.spi_fifo_dir().clear_bit()); // ?? in EVT
+        rb.spi0_buffer().write(|w| unsafe { w.bits(0xFF) });
+        while !rb.spi0_int_flag().read().spi_free().bit_is_set() {}
+        Ok(rb.spi0_buffer().read().bits())
     }
 
     pub fn blocking_write(&mut self, words: &[u8]) -> Result<(), Error> {
@@ -241,35 +247,38 @@ impl<'d, T: Instance> Spi<'d, T> {
 
         let rb = T::regs();
         // set fifo direction to output
-        rb.ctrl_mod().modify(|_, w| w.fifo_dir().clear_bit());
+        rb.spi0_ctrl_mod().modify(|_, w| w.spi_fifo_dir().clear_bit());
 
-        rb.total_cnt().write(|w| w.total_cnt().variant(words.len() as _));
-        rb.int_flag().write(|w| w.if_cnt_end().set_bit()); // end CNT set
+        rb.spi0_total_cnt()
+            .write(|w| w.spi0_total_cnt().variant(words.len() as _));
+        rb.spi0_int_flag().write(|w| w.spi_if_cnt_end().set_bit()); // end CNT set
 
         for &byte in words {
-            while rb.fifo_count().read().bits() >= SPI_FIFO_SIZE {}
-            rb.fifo().write(|w| w.fifo().variant(byte))
+            while rb.spi0_fifo_count().read().bits() >= SPI_FIFO_SIZE {}
+            rb.spi0_fifo().write(|w| w.spi0_fifo().variant(byte));
         }
 
-        while rb.fifo_count().read().bits() != 0 {}
+        while rb.spi0_fifo_count().read().bits() != 0 {}
 
         Ok(())
     }
 
     pub fn blocking_read(&mut self, words: &mut [u8]) -> Result<(), Error> {
-        T::regs().ctrl_mod().modify(|_, w| w.fifo_dir().set_bit());
+        T::regs().spi0_ctrl_mod().modify(|_, w| w.spi_fifo_dir().set_bit());
 
         let read_len = words.len();
         if read_len > 4095 {
             return Err(Error::Overrun);
         }
 
-        T::regs().total_cnt().write(|w| w.total_cnt().variant(words.len() as _));
-        T::regs().int_flag().write(|w| w.if_cnt_end().set_bit()); // end CNT set
+        T::regs()
+            .spi0_total_cnt()
+            .write(|w| w.spi0_total_cnt().variant(words.len() as _));
+        T::regs().spi0_int_flag().write(|w| w.spi_if_cnt_end().set_bit()); // end CNT set
 
         for i in 0..read_len {
-            if T::regs().fifo_count().read().bits() > 0 {
-                words[i] = T::regs().fifo().read().bits();
+            if T::regs().spi0_fifo_count().read().bits() > 0 {
+                words[i] = T::regs().spi0_fifo().read().bits();
             }
         }
 
@@ -314,11 +323,11 @@ pub trait Instance: Peripheral<P = Self> + sealed::Instance {}
 
 impl sealed::Instance for peripherals::SPI0 {
     fn regs() -> &'static crate::pac::spi0::RegisterBlock {
-        unsafe { &*crate::pac::SPI0::PTR }
+        unsafe { &*crate::pac::Spi0::PTR }
     }
 
     fn set_remap() {
-        let gpioctl = unsafe { &*crate::pac::GPIOCTL::PTR };
+        let gpioctl = unsafe { &*crate::pac::Sys::PTR };
         gpioctl.pin_alternate().modify(|_, w| w.spi0().set_bit());
     }
 }

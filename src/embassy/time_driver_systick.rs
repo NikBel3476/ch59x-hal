@@ -24,7 +24,7 @@ embassy_time_driver::time_driver_impl!(static DRIVER: SystickDriver = SystickDri
 
 impl SystickDriver {
     fn init(&'static self, _cs: critical_section::CriticalSection) {
-        let rb = unsafe { &*pac::SYSTICK::PTR };
+        let rb = unsafe { &*pac::Systick::PTR };
         let hclk = crate::sysctl::clocks().hclk.to_Hz() as u64;
 
         let cnt_per_second = hclk / 8;
@@ -33,10 +33,10 @@ impl SystickDriver {
         self.cnt_per_tick.store(cnt_per_tick as u32, Ordering::Relaxed);
 
         unsafe { rb.cmp().write(|w| w.bits(0)) };
-        rb.sr.write(|w| w.cntif().clear_bit());
+        rb.sr().write(|w| w.cntif().clear_bit());
 
         // Configration: Upcount, No reload, HCLK/8 as clock source
-        rb.ctlr.modify(|_, w| {
+        rb.ctlr().modify(|_, w| {
             w.init()
                 .set_bit()
                 .mode()
@@ -51,8 +51,8 @@ impl SystickDriver {
     }
 
     fn on_interrupt(&self) {
-        let rb = unsafe { &*pac::SYSTICK::PTR };
-        rb.sr.write(|w| w.cntif().clear_bit()); // clear IF
+        let rb = unsafe { &*pac::Systick::PTR };
+        rb.sr().write(|w| w.cntif().clear_bit()); // clear IF
 
         critical_section::with(|cs| {
             self.trigger_alarm(cs);
@@ -68,25 +68,25 @@ impl SystickDriver {
 
     #[inline]
     fn raw_cnt(&self) -> u64 {
-        let rb = unsafe { &*pac::SYSTICK::PTR };
+        let rb = unsafe { &*pac::Systick::PTR };
         rb.cnt().read().bits()
     }
 
     fn set_alarm(&self, cs: critical_section::CriticalSection, next_alarm_cnt: u64) -> bool {
         critical_section::with(|cs| {
-            let rb = unsafe { &*pac::SYSTICK::PTR };
+            let rb = unsafe { &*pac::Systick::PTR };
 
             if next_alarm_cnt <= self.raw_cnt() {
                 return false;
             }
 
             rb.cmp().write(|w| unsafe { w.bits(next_alarm_cnt) });
-            rb.ctlr.modify(|_, w| w.stie().set_bit());
-            rb.sr.write(|w| w.cntif().clear_bit());
+            rb.ctlr().modify(|_, w| w.stie().set_bit());
+            rb.sr().write(|w| w.cntif().clear_bit());
 
             if next_alarm_cnt <= self.raw_cnt() {
-                rb.ctlr.modify(|_, w| w.stie().clear_bit());
-                rb.sr.write(|w| w.cntif().clear_bit());
+                rb.ctlr().modify(|_, w| w.stie().clear_bit());
+                rb.sr().write(|w| w.cntif().clear_bit());
                 return false;
             }
 

@@ -30,7 +30,7 @@ impl Rtc {
         Self {}
     }
     pub fn timestamp_since_epoch(&self) -> u32 {
-        let rtc = unsafe { &*pac::RTC::PTR };
+        let rtc = unsafe { &*pac::Rtc::PTR };
 
         let day = rtc.cnt_day().read().bits() & 0x3fff;
         let mut sec = rtc.cnt_2s().read().bits() * 2;
@@ -42,22 +42,22 @@ impl Rtc {
 
     /// 32K clock tick
     pub fn counter_2s(&self) -> u16 {
-        let rtc = unsafe { &*pac::RTC::PTR };
+        let rtc = unsafe { &*pac::Rtc::PTR };
         rtc.cnt_2s().read().bits()
     }
 
     pub fn counter_tick(&self) -> u32 {
-        let rtc = unsafe { &*pac::RTC::PTR };
+        let rtc = unsafe { &*pac::Rtc::PTR };
         (rtc.cnt_2s().read().bits() as u32) << 16 | (rtc.cnt_32k().read().bits() as u32)
     }
 
     pub fn counter_day(&self) -> u16 {
-        let rtc = unsafe { &*pac::RTC::PTR };
+        let rtc = unsafe { &*pac::Rtc::PTR };
         (rtc.cnt_day().read().bits() & 0x3fff) as u16
     }
 
     pub fn enable_timing(&mut self, mode: TimingMode) {
-        let rtc = unsafe { &*pac::RTC::PTR };
+        let rtc = unsafe { &*pac::Rtc::PTR };
         rtc.flag_ctrl().modify(|_, w| w.tmr_clr().set_bit()); // clear flag
         with_safe_access(|| unsafe {
             rtc.mode_ctrl()
@@ -67,12 +67,12 @@ impl Rtc {
 
     /// Call this in IRQ handler, to clear flag
     pub fn ack_timing(&mut self) {
-        let rtc = unsafe { &*pac::RTC::PTR };
+        let rtc = unsafe { &*pac::Rtc::PTR };
         rtc.flag_ctrl().modify(|_, w| w.tmr_clr().set_bit()); // clear flag
     }
 
     pub fn disable_timing(&mut self) {
-        let rtc = unsafe { &*pac::RTC::PTR };
+        let rtc = unsafe { &*pac::Rtc::PTR };
         with_safe_access(|| {
             rtc.mode_ctrl().modify(|_, w| w.tmr_en().clear_bit());
         });
@@ -80,12 +80,12 @@ impl Rtc {
 
     // 32768
     pub fn counter_32k(&self) -> u16 {
-        let rtc = unsafe { &*pac::RTC::PTR };
+        let rtc = unsafe { &*pac::Rtc::PTR };
         rtc.cnt_32k().read().bits()
     }
 
     pub fn set_datatime(&mut self, t: DateTime) {
-        let rtc = unsafe { &*pac::RTC::PTR };
+        let rtc = unsafe { &*pac::Rtc::PTR };
 
         let mut days: u16 = (YEAR_OFFSET..t.year).map(|y| if y % 4 == 0 { 366 } else { 365 }).sum();
         days += (1..=t.month - 1).map(|m| days_in_month(m, t.year)).sum::<u16>();
@@ -108,7 +108,7 @@ impl Rtc {
     }
 
     pub fn now(&self) -> DateTime {
-        let rtc = unsafe { &*pac::RTC::PTR };
+        let rtc = unsafe { &*pac::Rtc::PTR };
 
         let mut days = (rtc.cnt_day().read().bits() & 0x3fff) as u16;
         // to u32, avoid overflow

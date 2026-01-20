@@ -3,29 +3,29 @@ use crate::pac;
 // We need to export this in the hal for the drivers to use
 
 crate::peripherals! {
-    SYSTICK <= SYSTICK,
-    UART0 <= UART0,
-    UART1 <= UART1,
-    UART2 <= UART2,
-    UART3 <= UART3,
+    SYSTICK <= Systick,
+    UART0 <= Uart0,
+    UART1 <= Uart1,
+    UART2 <= Uart2,
+    UART3 <= Uart3,
 
-    SPI0 <= SPI0,
+    SPI0 <= Spi0,
     // SPI1 is only avalible to CH593
 
-    I2C <= I2C,
-    RTC <= RTC,
+    I2C <= I2c,
+    RTC <= Rtc,
     GPIO <= virtual,
 
-    ADC <= ADC,
+    ADC <= Adc,
     TKEY <= virtual,
 
-    USB <= USB,
+    USB <= Usb,
 
-    TMR0 <= TMR0,
-    TMR1 <= TMR1,
-    TMR2 <= TMR2,
-    TMR3 <= TMR3,
-    PWMX <= PWMX,
+    TMR0 <= Tmr0,
+    TMR1 <= Tmr1,
+    TMR2 <= Tmr2,
+    TMR3 <= Tmr3,
+    PWMX <= Pwmx,
 
     BLE <= virtual,
 

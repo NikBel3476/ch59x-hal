@@ -80,8 +80,8 @@ impl<'d, T: Pin> Flex<'d, T> {
     pub fn is_low(&self) -> bool {
         let rb = self.pin.block();
         match self.pin._port() {
-            0 => rb.pa_pin.read().bits() & (1 << self.pin.pin()) == 0,
-            1 => rb.pb_pin.read().bits() & (1 << self.pin.pin()) == 0,
+            0 => rb.pa_pin().read().bits() & (1 << self.pin.pin()) == 0,
+            1 => rb.pb_pin().read().bits() & (1 << self.pin.pin()) == 0,
             _ => unreachable!(),
         }
     }
@@ -102,8 +102,8 @@ impl<'d, T: Pin> Flex<'d, T> {
         let rb = self.pin.block();
         let mask = 1 << self.pin.pin();
         match self.pin._port() {
-            0 => rb.pa_out.read().bits() & mask == 0,
-            1 => rb.pb_out.read().bits() & mask == 0,
+            0 => rb.pa_out().read().bits() & mask == 0,
+            1 => rb.pb_out().read().bits() & mask == 0,
             _ => unreachable!(),
         }
     }
@@ -309,12 +309,12 @@ pub(crate) unsafe fn init() {
 }
 
 fn irq_handler<const N: usize>(port: u8, wakers: &[AtomicWaker; N]) {
-    let gpioctl = unsafe { &*pac::GPIO::PTR };
+    let gpioctl = unsafe { &*pac::Gpio::PTR };
 
     let int_if = if port == 0 {
-        gpioctl.pa_int_if.read().bits()
+        gpioctl.pa_int_if().read().bits()
     } else {
-        gpioctl.pb_int_if.read().bits()
+        gpioctl.pb_int_if().read().bits()
     };
     for pin in 0..16 {
         if int_if & (1 << pin) == 0 {
@@ -323,17 +323,17 @@ fn irq_handler<const N: usize>(port: u8, wakers: &[AtomicWaker; N]) {
         if port == 0 {
             unsafe {
                 // clear IF, disable INT
-                gpioctl.pa_int_if.write(|w| w.bits(1 << pin));
-                gpioctl.pa_int_en.modify(|r, w| w.bits(r.bits() & !(1 << pin)));
+                gpioctl.pa_int_if().write(|w| w.bits(1 << pin));
+                gpioctl.pa_int_en().modify(|r, w| w.bits(r.bits() & !(1 << pin)));
             }
             wakers[pin as usize].wake();
         } else if port == 1 {
-            let sys = unsafe { &*pac::SYS::PTR };
+            let sys = unsafe { &*pac::Sys::PTR };
             unsafe {
-                gpioctl.pb_int_if.write(|w| w.bits(1 << pin));
-                gpioctl.pb_int_en.modify(|r, w| w.bits(r.bits() & !(1 << pin)));
+                gpioctl.pb_int_if().write(|w| w.bits(1 << pin));
+                gpioctl.pb_int_en().modify(|r, w| w.bits(r.bits() & !(1 << pin)));
             }
-            let pb8_9_remapped = sys.pin_alternate.read().intx().bit();
+            let pb8_9_remapped = sys.pin_alternate().read().intx().bit();
             if pb8_9_remapped && pin >= 8 && pin <= 9 {
                 wakers[(pin + 14) as usize].wake();
             } else {
@@ -489,7 +489,7 @@ pub(crate) mod sealed {
 
         #[inline]
         fn block(&self) -> &'static pac::gpio::RegisterBlock {
-            unsafe { &*pac::GPIO::PTR }
+            unsafe { &*pac::Gpio::PTR }
             // match self._port() {
             //     0 => unsafe { &*pac::GPIOA::PTR },
             //     1 => unsafe { &*pac::GPIOB::PTR },
@@ -503,10 +503,10 @@ pub(crate) mod sealed {
             let rb = self.block();
             let n = self._pin();
             match self._port() {
-                0 => rb.pa_out.modify(|r, w| unsafe { w.bits(r.bits() | (1 << n)) }),
-                1 => rb.pb_out.modify(|r, w| unsafe { w.bits(r.bits() | (1 << n)) }),
+                0 => rb.pa_out().modify(|r, w| unsafe { w.bits(r.bits() | (1 << n)) }),
+                1 => rb.pb_out().modify(|r, w| unsafe { w.bits(r.bits() | (1 << n)) }),
                 _ => unreachable!(),
-            }
+            };
         }
 
         /// Set the output as low.
@@ -515,10 +515,10 @@ pub(crate) mod sealed {
             let rb = self.block();
             let n = self._pin();
             match self._port() {
-                0 => rb.pa_clr.modify(|r, w| unsafe { w.bits(r.bits() | (1 << n)) }),
-                1 => rb.pa_clr.modify(|r, w| unsafe { w.bits(r.bits() | (1 << n)) }),
+                0 => rb.pa_clr().modify(|r, w| unsafe { w.bits(r.bits() | (1 << n)) }),
+                1 => rb.pa_clr().modify(|r, w| unsafe { w.bits(r.bits() | (1 << n)) }),
                 _ => unreachable!(),
-            }
+            };
         }
 
         #[inline]
@@ -528,14 +528,14 @@ pub(crate) mod sealed {
             let pin = self._pin();
             match self._port() {
                 0 => unsafe {
-                    rb.pa_pd_drv.modify(|r, w| w.bits(r.bits() & !(1 << pin)));
-                    rb.pa_pu.modify(|r, w| w.bits(r.bits() & !(1 << pin)));
-                    rb.pa_dir.modify(|r, w| w.bits(r.bits() & !(1 << pin)));
+                    rb.pa_pd_drv().modify(|r, w| w.bits(r.bits() & !(1 << pin)));
+                    rb.pa_pu().modify(|r, w| w.bits(r.bits() & !(1 << pin)));
+                    rb.pa_dir().modify(|r, w| w.bits(r.bits() & !(1 << pin)));
                 },
                 1 => unsafe {
-                    rb.pb_pd_drv.modify(|r, w| w.bits(r.bits() & !(1 << pin)));
-                    rb.pb_pu.modify(|r, w| w.bits(r.bits() & !(1 << pin)));
-                    rb.pb_dir.modify(|r, w| w.bits(r.bits() & !(1 << pin)));
+                    rb.pb_pd_drv().modify(|r, w| w.bits(r.bits() & !(1 << pin)));
+                    rb.pb_pu().modify(|r, w| w.bits(r.bits() & !(1 << pin)));
+                    rb.pb_dir().modify(|r, w| w.bits(r.bits() & !(1 << pin)));
                 },
                 _ => unimplemented!(),
             }
@@ -550,22 +550,22 @@ pub(crate) mod sealed {
             unsafe {
                 if drive == OutputDrive::_20mA {
                     match self._port() {
-                        0 => rb.pa_pd_drv.modify(|r, w| w.bits(r.bits() | (1 << pin))),
-                        1 => rb.pb_pd_drv.modify(|r, w| w.bits(r.bits() | (1 << pin))),
+                        0 => rb.pa_pd_drv().modify(|r, w| w.bits(r.bits() | (1 << pin))),
+                        1 => rb.pb_pd_drv().modify(|r, w| w.bits(r.bits() | (1 << pin))),
                         _ => unreachable!(),
-                    }
+                    };
                 } else {
                     match self._port() {
-                        0 => rb.pa_pd_drv.modify(|r, w| w.bits(r.bits() & !(1 << pin))),
-                        1 => rb.pb_pd_drv.modify(|r, w| w.bits(r.bits() & !(1 << pin))),
+                        0 => rb.pa_pd_drv().modify(|r, w| w.bits(r.bits() & !(1 << pin))),
+                        1 => rb.pb_pd_drv().modify(|r, w| w.bits(r.bits() & !(1 << pin))),
                         _ => unreachable!(),
-                    }
+                    };
                 }
                 match self._port() {
-                    0 => rb.pa_dir.modify(|r, w| w.bits(r.bits() | (1 << pin))),
-                    1 => rb.pb_dir.modify(|r, w| w.bits(r.bits() | (1 << pin))),
+                    0 => rb.pa_dir().modify(|r, w| w.bits(r.bits() | (1 << pin))),
+                    1 => rb.pb_dir().modify(|r, w| w.bits(r.bits() | (1 << pin))),
                     _ => unreachable!(),
-                }
+                };
             }
         }
 
@@ -575,41 +575,41 @@ pub(crate) mod sealed {
             let pin = self._pin();
             unsafe {
                 match self._port() {
-                    0 => rb.pa_dir.modify(|r, w| w.bits(r.bits() & !(1 << pin))),
-                    1 => rb.pb_dir.modify(|r, w| w.bits(r.bits() & !(1 << pin))),
+                    0 => rb.pa_dir().modify(|r, w| w.bits(r.bits() & !(1 << pin))),
+                    1 => rb.pb_dir().modify(|r, w| w.bits(r.bits() & !(1 << pin))),
                     _ => unreachable!(),
-                }
+                };
                 match pull {
                     Pull::None => match self._port() {
                         0 => {
-                            rb.pa_pu.modify(|r, w| w.bits(r.bits() & !(1 << pin)));
-                            rb.pa_pd_drv.modify(|r, w| w.bits(r.bits() & !(1 << pin)));
+                            rb.pa_pu().modify(|r, w| w.bits(r.bits() & !(1 << pin)));
+                            rb.pa_pd_drv().modify(|r, w| w.bits(r.bits() & !(1 << pin)));
                         }
                         1 => {
-                            rb.pb_pu.modify(|r, w| w.bits(r.bits() & !(1 << pin)));
-                            rb.pb_pd_drv.modify(|r, w| w.bits(r.bits() & !(1 << pin)));
+                            rb.pb_pu().modify(|r, w| w.bits(r.bits() & !(1 << pin)));
+                            rb.pb_pd_drv().modify(|r, w| w.bits(r.bits() & !(1 << pin)));
                         }
                         _ => unreachable!(),
                     },
                     Pull::Up => match self._port() {
                         0 => {
-                            rb.pa_pu.modify(|r, w| w.bits(r.bits() | (1 << pin)));
-                            rb.pa_pd_drv.modify(|r, w| w.bits(r.bits() & !(1 << pin)));
+                            rb.pa_pu().modify(|r, w| w.bits(r.bits() | (1 << pin)));
+                            rb.pa_pd_drv().modify(|r, w| w.bits(r.bits() & !(1 << pin)));
                         }
                         1 => {
-                            rb.pb_pu.modify(|r, w| w.bits(r.bits() | (1 << pin)));
-                            rb.pb_pd_drv.modify(|r, w| w.bits(r.bits() & !(1 << pin)));
+                            rb.pb_pu().modify(|r, w| w.bits(r.bits() | (1 << pin)));
+                            rb.pb_pd_drv().modify(|r, w| w.bits(r.bits() & !(1 << pin)));
                         }
                         _ => unreachable!(),
                     },
                     Pull::Down => match self._port() {
                         0 => {
-                            rb.pa_pu.modify(|r, w| w.bits(r.bits() & !(1 << pin)));
-                            rb.pa_pd_drv.modify(|r, w| w.bits(r.bits() | (1 << pin)));
+                            rb.pa_pu().modify(|r, w| w.bits(r.bits() & !(1 << pin)));
+                            rb.pa_pd_drv().modify(|r, w| w.bits(r.bits() | (1 << pin)));
                         }
                         1 => {
-                            rb.pb_pu.modify(|r, w| w.bits(r.bits() & !(1 << pin)));
-                            rb.pb_pd_drv.modify(|r, w| w.bits(r.bits() | (1 << pin)));
+                            rb.pb_pu().modify(|r, w| w.bits(r.bits() & !(1 << pin)));
+                            rb.pb_pd_drv().modify(|r, w| w.bits(r.bits() | (1 << pin)));
                         }
                         _ => unreachable!(),
                     },
@@ -624,17 +624,17 @@ pub(crate) mod sealed {
             match drive {
                 OutputDrive::_5mA => unsafe {
                     match self._port() {
-                        0 => rb.pa_pd_drv.modify(|r, w| w.bits(r.bits() & !(1 << pin))),
-                        1 => rb.pb_pd_drv.modify(|r, w| w.bits(r.bits() & !(1 << pin))),
+                        0 => rb.pa_pd_drv().modify(|r, w| w.bits(r.bits() & !(1 << pin))),
+                        1 => rb.pb_pd_drv().modify(|r, w| w.bits(r.bits() & !(1 << pin))),
                         _ => unreachable!(),
-                    }
+                    };
                 },
                 OutputDrive::_20mA => unsafe {
                     match self._port() {
-                        0 => rb.pa_pd_drv.modify(|r, w| w.bits(r.bits() | (1 << pin))),
-                        1 => rb.pb_pd_drv.modify(|r, w| w.bits(r.bits() | (1 << pin))),
+                        0 => rb.pa_pd_drv().modify(|r, w| w.bits(r.bits() | (1 << pin))),
+                        1 => rb.pb_pd_drv().modify(|r, w| w.bits(r.bits() | (1 << pin))),
                         _ => unreachable!(),
-                    }
+                    };
                 },
             }
         }
@@ -642,18 +642,18 @@ pub(crate) mod sealed {
         #[inline]
         fn disable_interrupt(&mut self) {
             critical_section::with(|_| {
-                let gpioctl = unsafe { &*pac::GPIO::PTR };
+                let gpioctl = unsafe { &*pac::Gpio::PTR };
                 let n = self._pin();
                 match self._port() {
                     0 => unsafe {
-                        gpioctl.pa_int_en.modify(|r, w| w.bits(r.bits() & !(1 << n)));
+                        gpioctl.pa_int_en().modify(|r, w| w.bits(r.bits() & !(1 << n)));
                     },
                     1 if n >= 22 => unsafe {
                         // map PB[23:22] to PB[9:8]
-                        gpioctl.pb_int_en.modify(|r, w| w.bits(r.bits() & !(1 << (n - 14))));
+                        gpioctl.pb_int_en().modify(|r, w| w.bits(r.bits() & !(1 << (n - 14))));
                     },
                     1 => unsafe {
-                        gpioctl.pb_int_en.modify(|r, w| w.bits(r.bits() & !(1 << n)));
+                        gpioctl.pb_int_en().modify(|r, w| w.bits(r.bits() & !(1 << n)));
                     },
                     _ => unreachable!(),
                 }
@@ -662,15 +662,15 @@ pub(crate) mod sealed {
 
         #[inline]
         fn is_interrupt_enabled(&self) -> bool {
-            let gpioctl = unsafe { &*pac::GPIO::PTR };
+            let gpioctl = unsafe { &*pac::Gpio::PTR };
             let n = self._pin();
             match self._port() {
-                0 => gpioctl.pa_int_en.read().bits() & (1 << n) != 0,
+                0 => gpioctl.pa_int_en().read().bits() & (1 << n) != 0,
                 1 if n >= 22 => {
                     // map PB[23:22] to PB[9:8]
-                    gpioctl.pb_int_en.read().bits() & (1 << (n - 14)) != 0
+                    gpioctl.pb_int_en().read().bits() & (1 << (n - 14)) != 0
                 }
-                1 => gpioctl.pb_int_en.read().bits() & (1 << n) != 0,
+                1 => gpioctl.pb_int_en().read().bits() & (1 << n) != 0,
                 _ => unreachable!(),
             }
         }
@@ -680,8 +680,8 @@ pub(crate) mod sealed {
             critical_section::with(|_| {
                 use InterruptTrigger::*;
 
-                let sys = unsafe { &*pac::SYS::PTR };
-                let gpioctl = unsafe { &*pac::GPIO::PTR };
+                let sys = unsafe { &*pac::Sys::PTR };
+                let gpioctl = unsafe { &*pac::Gpio::PTR };
                 let rb = self.block();
                 let mut n = self._pin();
                 // map PB[23:22] to PB[9:8]
@@ -689,35 +689,35 @@ pub(crate) mod sealed {
                 match self._port() {
                     0 => unsafe {
                         if matches!(trigger, LowLevel | HighLevel) {
-                            gpioctl.pa_int_mode.modify(|r, w| w.bits(r.bits() & !(1 << n)));
+                            gpioctl.pa_int_mode().modify(|r, w| w.bits(r.bits() & !(1 << n)));
                         } else {
-                            gpioctl.pa_int_mode.modify(|r, w| w.bits(r.bits() | (1 << n)));
+                            gpioctl.pa_int_mode().modify(|r, w| w.bits(r.bits() | (1 << n)));
                         }
                     },
                     1 => unsafe {
                         if n >= 22 {
                             n -= 14;
-                            sys.pin_alternate.modify(|_, w| w.intx().set_bit());
+                            sys.pin_alternate().modify(|_, w| w.intx().set_bit());
                         }
 
                         if matches!(trigger, LowLevel | HighLevel) {
-                            rb.pb_int_mode.modify(|r, w| w.bits(r.bits() & !(1 << n)));
+                            rb.pb_int_mode().modify(|r, w| w.bits(r.bits() & !(1 << n)));
                         } else {
-                            rb.pb_int_mode.modify(|r, w| w.bits(r.bits() | (1 << n)));
+                            rb.pb_int_mode().modify(|r, w| w.bits(r.bits() | (1 << n)));
                         }
                     },
                     _ => unreachable!(),
                 }
                 if matches!(trigger, LowLevel | FallingEdge) {
                     match self._port() {
-                        0 => rb.pa_clr.modify(|r, w| unsafe { w.bits(r.bits() | (1 << n)) }),
-                        1 => rb.pb_clr.modify(|r, w| unsafe { w.bits(r.bits() | (1 << n)) }),
+                        0 => rb.pa_clr().modify(|r, w| unsafe { w.bits(r.bits() | (1 << n)) }),
+                        1 => rb.pb_clr().modify(|r, w| unsafe { w.bits(r.bits() | (1 << n)) }),
                         _ => unreachable!(),
                     }
                 } else {
                     match self._port() {
-                        0 => rb.pa_out.modify(|r, w| unsafe { w.bits(r.bits() | (1 << n)) }),
-                        1 => rb.pb_out.modify(|r, w| unsafe { w.bits(r.bits() | (1 << n)) }),
+                        0 => rb.pa_out().modify(|r, w| unsafe { w.bits(r.bits() | (1 << n)) }),
+                        1 => rb.pb_out().modify(|r, w| unsafe { w.bits(r.bits() | (1 << n)) }),
                         _ => unreachable!(),
                     }
                 }
@@ -728,23 +728,23 @@ pub(crate) mod sealed {
         #[inline]
         fn enable_interrupt(&mut self) {
             critical_section::with(|_| {
-                let gpio = unsafe { &*pac::GPIO::PTR };
-                let sysctl = unsafe { &*pac::SYS::PTR };
+                let gpio = unsafe { &*pac::Gpio::PTR };
+                let sysctl = unsafe { &*pac::Sys::PTR };
                 let mut n = self._pin();
                 // map PB[23:22] to PB[9:8]
 
                 match self._port() {
                     0 => unsafe {
-                        gpio.pa_int_if.write(|w| w.bits(1 << n));
-                        gpio.pa_int_en.modify(|r, w| w.bits(r.bits() | (1 << n)));
+                        gpio.pa_int_if().write(|w| w.bits(1 << n));
+                        gpio.pa_int_en().modify(|r, w| w.bits(r.bits() | (1 << n)));
                     },
                     1 => unsafe {
                         if n >= 22 {
                             n -= 14;
-                            sysctl.pin_alternate.modify(|_, w| w.intx().set_bit());
+                            sysctl.pin_alternate().modify(|_, w| w.intx().set_bit());
                         }
-                        gpio.pb_int_if.write(|w| w.bits(1 << n));
-                        gpio.pb_int_en.modify(|r, w| w.bits(r.bits() | (1 << n)));
+                        gpio.pb_int_if().write(|w| w.bits(1 << n));
+                        gpio.pb_int_en().modify(|r, w| w.bits(r.bits() | (1 << n)));
                     },
                     _ => unreachable!(),
                 }
@@ -753,19 +753,19 @@ pub(crate) mod sealed {
 
         #[inline]
         fn clear_interrupt(&mut self) {
-            let gpio = unsafe { &*pac::GPIO::PTR };
+            let gpio = unsafe { &*pac::Gpio::PTR };
             let n = self._pin();
             // clear int_if, write 1 to clear
             match self._port() {
                 0 => unsafe {
-                    gpio.pa_int_if.write(|w| w.bits(1 << n));
+                    gpio.pa_int_if().write(|w| w.bits(1 << n));
                 },
                 1 if n >= 22 => unsafe {
                     // remap to PB[9:8]
-                    gpio.pb_int_if.modify(|r, w| w.bits(r.bits() | (1 << (n - 14))));
+                    gpio.pb_int_if().modify(|r, w| w.bits(r.bits() | (1 << (n - 14))));
                 },
                 1 => unsafe {
-                    gpio.pb_int_if.write(|w| w.bits(1 << n));
+                    gpio.pb_int_if().write(|w| w.bits(1 << n));
                 },
                 _ => unreachable!(),
             }

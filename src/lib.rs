@@ -133,20 +133,20 @@ pub struct Config {
 }
 
 pub fn init(config: Config) -> Peripherals {
-    let sys = unsafe { &*pac::SYS::PTR };
+    let sys = unsafe { &*pac::Sys::PTR };
     if config.enable_dcdc {
         with_safe_access(|| {
-            sys.aux_power_adj.modify(|_, w| w.dcdc_charge().set_bit());
-            sys.power_plan.modify(|_, w| w.pwr_dcdc_pre().set_bit());
+            sys.aux_power_adj().modify(|_, w| w.dcdc_charge().set_bit());
+            sys.power_plan().modify(|_, w| w.pwr_dcdc_pre().set_bit());
         });
         delay_us(10);
         with_safe_access(|| {
-            sys.power_plan.modify(|_, w| w.pwr_dcdc_en().set_bit());
+            sys.power_plan().modify(|_, w| w.pwr_dcdc_en().set_bit());
         });
     } else {
         with_safe_access(|| {
-            sys.aux_power_adj.modify(|_, w| w.dcdc_charge().clear_bit());
-            sys.power_plan
+            sys.aux_power_adj().modify(|_, w| w.dcdc_charge().clear_bit());
+            sys.power_plan()
                 .modify(|_, w| w.pwr_dcdc_pre().clear_bit().pwr_dcdc_pre().clear_bit());
         });
     }
@@ -155,14 +155,14 @@ pub fn init(config: Config) -> Peripherals {
 
     if config.low_power {
         unsafe {
-            let rb = &*pac::GPIO::PTR;
+            let rb = &*pac::Gpio::PTR;
             // in pu
-            rb.pa_pd_drv.write(|w| w.bits(0));
-            rb.pb_pd_drv.write(|w| w.bits(0));
-            rb.pa_pu.write(|w| w.bits(0xffff));
-            rb.pb_pu.write(|w| w.bits(0xffff));
-            rb.pa_dir.write(|w| w.bits(0));
-            rb.pb_dir.write(|w| w.bits(0));
+            rb.pa_pd_drv().write(|w| w.bits(0));
+            rb.pb_pd_drv().write(|w| w.bits(0));
+            rb.pa_pu().write(|w| w.bits(0xffff));
+            rb.pb_pu().write(|w| w.bits(0xffff));
+            rb.pa_dir().write(|w| w.bits(0));
+            rb.pb_dir().write(|w| w.bits(0));
         }
     }
 
@@ -172,8 +172,8 @@ pub fn init(config: Config) -> Peripherals {
 /// System reset
 pub unsafe fn reset() -> ! {
     const KEY3: u16 = 0xBEEF;
-    let pfic = unsafe { &*pac::PFIC::PTR };
-    pfic.cfgr.write(|w| w.keycode().variant(KEY3).resetsys().set_bit());
+    let pfic = unsafe { &*pac::Pfic::PTR };
+    pfic.cfgr().write(|w| w.keycode().variant(KEY3).resetsys().set_bit());
     loop {}
 }
 
@@ -181,9 +181,9 @@ pub unsafe fn reset() -> ! {
 pub unsafe fn soft_reset() -> ! {
     isp::flash_rom_reset();
 
-    let rb = &*pac::SYSCTL::PTR;
+    let rb = &*pac::Sysctl::PTR;
     with_safe_access(|| {
-        rb.rst_wdog_ctrl.modify(|_, w| w.software_reset().set_bit());
+        rb.rst_wdog_ctrl().modify(|_, w| w.software_reset().set_bit());
     });
     loop {}
 }
