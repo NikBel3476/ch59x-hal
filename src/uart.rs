@@ -347,13 +347,13 @@ fn configure(
     match config.stop_bits {
         StopBits::STOP1 => rb.lcr().modify(|_, w| w.stop_bit().clear_bit()),
         StopBits::STOP2 => rb.lcr().modify(|_, w| w.stop_bit().set_bit()),
-    }
+    };
     match config.parity {
         Parity::ParityNone => rb.lcr().modify(|_, w| w.par_en().clear_bit()),
         _ => rb
             .lcr()
             .modify(|_, w| w.par_en().set_bit().par_mod().variant(config.parity as u8)),
-    }
+    };
 
     // baudrate = Fsys * 2 / R8_UARTx_DIV / 16 / R16_UARTx_DL
     // match some common baudrates
@@ -463,7 +463,7 @@ macro_rules! impl_uart {
 
             /// Remap offset in R16_PIN_ALTERNATE
             fn set_remap() {
-                let gpioctl = unsafe { &*pac::GPIOCTL::PTR };
+                let gpioctl = unsafe { &*pac::Sys::PTR };
                 gpioctl.pin_alternate().modify(|_, w| w.$remap_field().set_bit());
             }
         }

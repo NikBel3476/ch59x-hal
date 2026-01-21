@@ -176,7 +176,7 @@ impl<'d, T: Instance> Spi<'d, T> {
         }
         T::regs()
             .spi0_clock_div_r8_spi0_slave_pre()
-            .write(|w| w.spi0_clock_div_r8_spi0_slave_pre().variant(fdiv));
+            .write(|w| unsafe { w.spi0_clock_div_r8_spi0_slave_pre().bits(fdiv) });
 
         // FIFO/Counter/IF clear
         T::regs().spi0_ctrl_mod().write(|w| w.spi_all_clear().set_bit());
@@ -250,12 +250,12 @@ impl<'d, T: Instance> Spi<'d, T> {
         rb.spi0_ctrl_mod().modify(|_, w| w.spi_fifo_dir().clear_bit());
 
         rb.spi0_total_cnt()
-            .write(|w| w.spi0_total_cnt().variant(words.len() as _));
+            .write(|w| unsafe { w.spi0_total_cnt().bits(words.len() as _) });
         rb.spi0_int_flag().write(|w| w.spi_if_cnt_end().set_bit()); // end CNT set
 
         for &byte in words {
             while rb.spi0_fifo_count().read().bits() >= SPI_FIFO_SIZE {}
-            rb.spi0_fifo().write(|w| w.spi0_fifo().variant(byte));
+            rb.spi0_fifo().write(|w| unsafe { w.spi0_fifo().bits(byte) });
         }
 
         while rb.spi0_fifo_count().read().bits() != 0 {}
@@ -273,7 +273,7 @@ impl<'d, T: Instance> Spi<'d, T> {
 
         T::regs()
             .spi0_total_cnt()
-            .write(|w| w.spi0_total_cnt().variant(words.len() as _));
+            .write(|w| unsafe { w.spi0_total_cnt().bits(words.len() as _) });
         T::regs().spi0_int_flag().write(|w| w.spi_if_cnt_end().set_bit()); // end CNT set
 
         for i in 0..read_len {

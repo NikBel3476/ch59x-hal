@@ -165,7 +165,7 @@ where
     pub fn new(adc: impl Peripheral<P = T> + 'd, config: Config) -> Self {
         into_ref!(adc);
 
-        let mut rb = T::regs();
+        let rb = T::regs();
         unsafe {
             rb.cfg().modify(|_, w| {
                 w.power_on()
@@ -173,11 +173,13 @@ where
                     .diff_en()
                     .bit(config.diff_en) // must for temp
                     .clk_div()
-                    .variant(config.clk as u8)
+                    // .variant(config.clk as u8)
+                    .bits(config.clk as u8)
                     .buf_en()
                     .bit(config.buf_en)
                     .pga_gain()
-                    .variant(config.pga_gain as u8)
+                    // .variant(config.pga_gain as u8)
+                    .bits(config.pga_gain as u8)
             });
         }
 
@@ -186,15 +188,17 @@ where
 
     pub fn set_config(&self, config: Config) {
         let rb = T::regs();
-        rb.cfg().modify(|_, w| {
+        rb.cfg().modify(|_, w| unsafe {
             w.diff_en()
                 .bit(config.diff_en) // must for temp
                 .clk_div()
-                .variant(config.clk as u8)
+                // .variant(config.clk as u8)
+                .bits(config.clk as u8)
                 .buf_en()
                 .bit(config.buf_en)
                 .pga_gain()
-                .variant(config.pga_gain as u8)
+                // .variant(config.pga_gain as u8)
+                .bits(config.pga_gain as u8)
         });
     }
 
@@ -232,7 +236,9 @@ where
         let channel = pin.channel();
 
         // Select channel
-        rb.channel().modify(|_, w| w.ch_inx().variant(channel));
+        rb.channel().modify(|_, w| unsafe {
+            w.ch_inx().bits(channel) /*.variant(channel) */
+        });
 
         self.convert()
     }

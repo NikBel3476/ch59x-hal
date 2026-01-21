@@ -112,18 +112,18 @@ impl<'d, T: Instance> I2c<'d, T> {
         // TODO: enable peripheral
 
         // reset peripheral
-        rb.i2c_ctrl1().modify(|_, w| w.i2c_swrst().set_bit());
-        rb.i2c_ctrl1().modify(|_, w| w.i2c_swrst().clear_bit());
+        rb.ctrl1().modify(|_, w| w.swrst().set_bit());
+        rb.ctrl1().modify(|_, w| w.swrst().clear_bit());
 
         // 60MHz is the max frequency
         let sysclk = crate::sysctl::clocks().hclk.to_Hz();
         let sysclk_mhz = crate::sysctl::clocks().hclk.to_MHz();
         let i2c_clk = config.frequency.to_Hz();
 
-        rb.i2c_ctrl2()
-            .modify(|_, w| w.i2c_freq().variant((sysclk / 1_000_000) as u8));
+        rb.ctrl2()
+            .modify(|_, w| unsafe { w.freq().bits((sysclk / 1_000_000) as u8) });
 
-        rb.i2c_ctrl1().modify(|_, w| w.i2c_pe().clear_bit());
+        rb.ctrl1().modify(|_, w| w.pe().clear_bit());
 
         if config.frequency.to_Hz() <= 100_000 {
             let tmp = (sysclk / (i2c_clk * 2)) & 0x0FFF;
@@ -131,8 +131,8 @@ impl<'d, T: Instance> I2c<'d, T> {
 
             let val = u32::min(sysclk_mhz + 1, 0x3F);
 
-            rb.i2c_rtr().write(|w| w.i2c_trise().variant(val as _));
-            rb.i2c_ckcfgr().write(|w| w.i2c_ccr().variant(tmp as _));
+            rb.rtr().write(|w| unsafe { w.trise().bits(val as _) });
+            rb.ckcfgr().write(|w| unsafe { w.ccr().bits(tmp as _) });
         } else {
             // high speed, use duty cycle
             let tmp = if config.duty == Duty::Duty2_1 {
@@ -144,66 +144,60 @@ impl<'d, T: Instance> I2c<'d, T> {
 
             let val = (sysclk_mhz * 300) / 1000 + 1;
 
-            rb.i2c_rtr().write(|w| w.i2c_trise().variant(val as _));
-            rb.i2c_ckcfgr().write(|w| {
-                w.i2c_fs()
+            rb.rtr().write(|w| unsafe { w.trise().bits(val as _) });
+            rb.ckcfgr().write(|w| unsafe {
+                w.fs()
                     .set_bit()
-                    .i2c_duty()
+                    .duty()
                     .variant(config.duty as u8 != 0)
-                    .i2c_ccr()
-                    .variant(tmp as u16)
+                    .ccr()
+                    .bits(tmp as u16)
             });
         }
 
-        rb.i2c_ctrl1().modify(|_, w| w.i2c_pe().set_bit());
+        rb.ctrl1().modify(|_, w| w.pe().set_bit());
 
         // i2c type, ACK=master mode
-        rb.i2c_ctrl1().modify(|_, w| {
-            w.i2c_smbus()
-                .clear_bit()
-                .i2c_smbtype()
-                .clear_bit()
-                .i2c_ack()
-                .clear_bit()
-        });
+        rb.ctrl1()
+            .modify(|_, w| w.smbus().clear_bit().smbtype().clear_bit().ack().clear_bit());
 
         Self { phantom: PhantomData }
     }
 
-    fn check_and_clear_error_flags(&self) -> Result<crate::pac::i2c::i2c_star1::R, Error> {
+    fn check_and_clear_error_flags(&self) -> Result<crate::pac::i2c::star1::R, Error> {
         // Note that flags should only be cleared once they have been registered. If flags are
         // cleared otherwise, there may be an inherent race condition and flags may be missed.
-        let star1 = T::regs().i2c_star1().read();
+        let star1 = T::regs().star1().read();
 
-        if star1.i2c_timeout().bit() {
-            T::regs().i2c_star1().modify(|_, w| w.timeout().clear_bit());
+        if star1.timeout().bit() {
+            T::regs().star1().modify(|_, w| unsafe { w.timeout().clear_bit() });
             return Err(Error::Timeout);
         }
 
-        if star1.i2c_pecerr().bit() {
-            T::regs().i2c_star1().modify(|_, w| w.pecerr().clear_bit());
+        if star1.pecerr().bit() {
+            T::regs().star1().modify(|_, w| unsafe { w.pecerr().clear_bit() });
             return Err(Error::Crc);
         }
 
-        if star1.i2c_ovr().bit() {
-            T::regs().i2c_star1().modify(|_, w| w.ovr().clear_bit());
+        if star1.ovr().bit() {
+            T::regs().star1().modify(|_, w| w.ovr().clear_bit());
             return Err(Error::Overrun);
         }
 
-        if star1.i2c_af().bit() {
-            T::regs().i2c_star1().modify(|_, w| w.af().clear_bit());
+        if star1.af().bit() {
+            T::regs().star1().modify(|_, w| w.af().clear_bit());
             return Err(Error::Nack);
         }
 
-        if star1.i2c_arlo().bit() {
-            T::regs().i2c_star1().modify(|_, w| w.arlo().clear_bit());
+        if star1.arlo().bit() {
+            T::regs().star1().modify(|_, w| w.arlo().clear_bit());
             return Err(Error::Arbitration);
         }
 
         // The errata indicates that BERR may be incorrectly detected. It recommends ignoring and
         // clearing the BERR bit instead.
-        if star1.i2c_berr().bit() {
-            T::regs().i2c_star1().modify(|_, w| w.berr().clear_bit());
+        if star1.berr().bit() {
+            T::regs().star1().modify(|_, w| w.berr().clear_bit());
         }
 
         Ok(star1)
@@ -219,10 +213,10 @@ impl<'d, T: Instance> I2c<'d, T> {
         // Send a START condition
         let rb = T::regs();
 
-        rb.i2c_ctrl1().modify(|_, w| w.i2c_start().set_bit());
+        rb.ctrl1().modify(|_, w| w.start().set_bit());
 
         // Wait until START condition was generated
-        while !self.check_and_clear_error_flags()?.i2c_sb().bit() {
+        while !self.check_and_clear_error_flags()?.sb().bit() {
             check_timeout()?;
         }
 
@@ -230,24 +224,24 @@ impl<'d, T: Instance> I2c<'d, T> {
         while {
             self.check_and_clear_error_flags()?;
 
-            let sr2 = rb.i2c_star2().read();
-            !sr2.i2c_msl().bit() && !sr2.i2c_busy().bit()
+            let sr2 = rb.star2().read();
+            !sr2.msl().bit() && !sr2.busy().bit()
         } {
             check_timeout()?;
         }
 
         // Set up current address, we're trying to talk to
-        rb.i2c_datar().write(|w| w.i2c_datar().variant(addr << 1));
+        rb.datar().write(|w| unsafe { w.datar().bits(addr << 1) });
 
         // Wait until address was sent
         // Wait for the address to be acknowledged
         // Check for any I2C errors. If a NACK occurs, the ADDR bit will never be set.
-        while !self.check_and_clear_error_flags()?.i2c_addr().bit() {
+        while !self.check_and_clear_error_flags()?.addr().bit() {
             check_timeout()?;
         }
 
         // Clear condition by reading SR2
-        let _ = rb.i2c_star2().read();
+        let _ = rb.star2().read();
 
         // Send bytes
         for c in bytes {
@@ -261,18 +255,18 @@ impl<'d, T: Instance> I2c<'d, T> {
         // Wait until we're ready for sending
         while {
             // Check for any I2C errors. If a NACK occurs, the ADDR bit will never be set.
-            !self.check_and_clear_error_flags()?.i2c_tx_e().bit()
+            !self.check_and_clear_error_flags()?.tx_e().bit()
         } {
             check_timeout()?;
         }
 
         // Push out a byte of data
-        T::regs().i2c_datar().write(|w| w.i2c_datar().variant(byte));
+        T::regs().datar().write(|w| unsafe { w.datar().bits(byte) });
 
         // Wait until byte is transferred
         while {
             // Check for any potential error conditions.
-            !self.check_and_clear_error_flags()?.i2c_btf().bit()
+            !self.check_and_clear_error_flags()?.btf().bit()
         } {
             check_timeout()?;
         }
@@ -285,12 +279,12 @@ impl<'d, T: Instance> I2c<'d, T> {
             // Check for any potential error conditions.
             self.check_and_clear_error_flags()?;
 
-            !T::regs().i2c_star1().read().i2c_rx_ne().bit()
+            !T::regs().star1().read().rx_ne().bit()
         } {
             check_timeout()?;
         }
 
-        let value = T::regs().i2c_datar().read().i2c_datar().bits();
+        let value = T::regs().datar().read().datar().bits();
         Ok(value)
     }
 
@@ -302,34 +296,32 @@ impl<'d, T: Instance> I2c<'d, T> {
     ) -> Result<(), Error> {
         if let Some((last, buffer)) = buffer.split_last_mut() {
             // Send a START condition and set ACK bit
-            T::regs()
-                .i2c_ctrl1()
-                .modify(|_, w| w.i2c_start().set_bit().i2c_ack().set_bit());
+            T::regs().ctrl1().modify(|_, w| w.start().set_bit().ack().set_bit());
 
             // Wait until START condition was generated
-            while !self.check_and_clear_error_flags()?.i2c_sb().bit() {
+            while !self.check_and_clear_error_flags()?.sb().bit() {
                 check_timeout()?;
             }
 
             // Also wait until signalled we're master and everything is waiting for us
             while {
-                let sr2 = T::regs().i2c_star2().read();
-                !sr2.i2c_msl().bit() && !sr2.i2c_busy().bit()
+                let sr2 = T::regs().star2().read();
+                !sr2.msl().bit() && !sr2.busy().bit()
             } {
                 check_timeout()?;
             }
 
             // Set up current address, we're trying to talk to
-            T::regs().i2c_datar().write(|w| w.i2c_datar().variant((addr << 1) + 1));
+            T::regs().datar().write(|w| unsafe { w.datar().bits((addr << 1) + 1) });
 
             // Wait until address was sent
             // Wait for the address to be acknowledged
-            while !self.check_and_clear_error_flags()?.i2c_addr().bit() {
+            while !self.check_and_clear_error_flags()?.addr().bit() {
                 check_timeout()?;
             }
 
             // Clear condition by reading SR2
-            let _ = T::regs().i2c_star2().read();
+            let _ = T::regs().star2().read();
 
             // Receive bytes into buffer
             for c in buffer {
@@ -337,15 +329,13 @@ impl<'d, T: Instance> I2c<'d, T> {
             }
 
             // Prepare to send NACK then STOP after next byte
-            T::regs()
-                .i2c_ctrl1()
-                .modify(|_, w| w.i2c_ack().clear_bit().i2c_stop().set_bit());
+            T::regs().ctrl1().modify(|_, w| w.ack().clear_bit().stop().set_bit());
 
             // Receive last byte
             *last = self.recv_byte(&check_timeout)?;
 
             // Wait for the STOP to be sent.
-            while T::regs().i2c_ctrl1().read().i2c_stop().bit() {
+            while T::regs().ctrl1().read().stop().bit() {
                 check_timeout()?;
             }
 
@@ -368,9 +358,9 @@ impl<'d, T: Instance> I2c<'d, T> {
     ) -> Result<(), Error> {
         self.write_bytes(addr, write, &check_timeout)?;
         // Send a STOP condition
-        T::regs().i2c_ctrl1().modify(|_, w| w.i2c_stop().set_bit());
+        T::regs().ctrl1().modify(|_, w| w.stop().set_bit());
         // Wait for STOP condition to transmit.
-        while T::regs().i2c_ctrl1().read().i2c_stop().bit() {
+        while T::regs().ctrl1().read().stop().bit() {
             check_timeout()?;
         }
 
@@ -402,7 +392,7 @@ impl<'d, T: Instance> I2c<'d, T> {
 
 impl<'d, T: Instance> Drop for I2c<'d, T> {
     fn drop(&mut self) {
-        T::regs().i2c_ctrl1().modify(|_, w| w.i2c_pe().clear_bit());
+        T::regs().ctrl1().modify(|_, w| w.pe().clear_bit());
     }
 }
 
